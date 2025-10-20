@@ -293,12 +293,20 @@
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(5, 10, 5);
     directionalLight.castShadow = true;
+    // シャドウの品質と自己シャドウ抑制
     directionalLight.shadow.mapSize.width = 2048;
     directionalLight.shadow.mapSize.height = 2048;
-    scene.add(directionalLight);
+    directionalLight.shadow.bias = -0.0002;
+    directionalLight.shadow.normalBias = 0.02;
+    const sc = directionalLight.shadow.camera;
+    sc.near = 1; sc.far = 30;
+    const dsz = 10; sc.left = -dsz; sc.right = dsz; sc.top = dsz; sc.bottom = -dsz;
+    sc.updateProjectionMatrix();
+    directionalLight.target.position.set(0, 0, 0);
+    scene.add(directionalLight.target);
 
-    // 床（ピンク）
-    const floorGeometry = new THREE.PlaneGeometry(15, 15);
+    // 床（ピンク）: メッシュ分割を増やしてシャドウの三角アーティファクトを軽減
+    const floorGeometry = new THREE.PlaneGeometry(15, 15, 12, 12);
     const floorMaterial = new THREE.MeshStandardMaterial({
       color: 0xFF0083, // ピンク（指定: #FF0083）
       roughness: 0.8,
@@ -306,7 +314,8 @@
     });
     const floor = new THREE.Mesh(floorGeometry, floorMaterial);
     floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
+    // 床は自己影を受け取らない（三角アーティファクト抑止）
+    floor.receiveShadow = false;
     scene.add(floor);
 
     // 天井（黄色）
@@ -320,7 +329,7 @@
     const ceiling = new THREE.Mesh(ceilingGeometry, ceilingMaterial);
     ceiling.rotation.x = Math.PI / 2; // 下向き
     ceiling.position.y = 5;
-    ceiling.receiveShadow = true;
+    ceiling.receiveShadow = false; // 壁・天井も自己影受け取りオフ（必要最小限）
     scene.add(ceiling);
 
     // 壁を作成する関数
@@ -334,7 +343,7 @@
       wall.position.copy(position);
       if (rotation) wall.rotation.y = rotation;
       wall.castShadow = true;
-      wall.receiveShadow = true;
+      wall.receiveShadow = false; // 壁の自己影受け取りオフ
       scene.add(wall);
       return wall;
     }

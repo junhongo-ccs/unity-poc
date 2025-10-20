@@ -16,13 +16,12 @@
       display: block;
     }
 
-    /* PC用の操作オーバーレイは常時非表示（壁パネルは別なのでOK） */
-    #info {
-      display: none;
-    }
+    /* 旧ルールは撤去: 初期表示は下の #info で明示 */
 
     /* PC用の操作オーバーレイ（デフォルト表示）。タッチ端末では後段の @media で非表示 */
     #info {
+      display: block;
+      /* 初期表示（上の display:none を上書き） */
       position: absolute;
       top: 10px;
       left: 10px;

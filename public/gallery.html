@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Gallery</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
+    canvas {
+      display: block;
+    }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      background: rgba(0,0,0,0.7);
+      padding: 15px;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 300px;
+    }
+    #info strong {
+      font-size: 16px;
+      display: block;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">
+  <div id="crosshair" style="position:fixed;left:50%;top:50%;width:32px;height:32px;pointer-events:none;z-index:10;transform:translate(-50%,-50%);">
+    <svg width="32" height="32">
+      <line x1="16" y1="8" x2="16" y2="24" stroke="#fff" stroke-width="2"/>
+      <line x1="8" y1="16" x2="24" y2="16" stroke="#fff" stroke-width="2"/>
+    </svg>
+  </div>
+    <strong>🎨 3D ギャラリー</strong>
+    <div style="margin-bottom: 8px;">
+      <strong>📍 操作方法</strong><br>
+      • クリックして入室<br>
+      • マウス移動で視点回転
+    </div>
+    <div style="margin-bottom: 8px;">
+      <strong>⌨️ キー操作</strong><br>
+      • W / ↑ : 前進<br>
+      • S / ↓ : 後退<br>
+      • A / ← : 左移動<br>
+      • D / → : 右移動<br>
+      • E / ESC : 退室
+    </div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+    // シーン、カメラ、レンダラーの初期化
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87ceeb); // 空色
+    scene.fog = new THREE.Fog(0x87ceeb, 0, 50);
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 1.6, 5); // 目の高さ
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.body.appendChild(renderer.domElement);
+
+    // ライト
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(5, 10, 5);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.mapSize.width = 2048;
+    directionalLight.shadow.mapSize.height = 2048;
+    scene.add(directionalLight);
+
+    // 床
+    const floorGeometry = new THREE.PlaneGeometry(30, 30);
+    const floorMaterial = new THREE.MeshStandardMaterial({ 
+      color: 0xcccccc,
+      roughness: 0.8,
+      metalness: 0.2
+    });
+    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    // 壁を作成する関数
+    function createWall(width, height, position, rotation) {
+      const wallGeometry = new THREE.BoxGeometry(width, height, 0.2);
+      const wallMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xffffff,
+        roughness: 0.9
+      });
+      const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+      wall.position.copy(position);
+      if (rotation) wall.rotation.y = rotation;
+      wall.castShadow = true;
+      wall.receiveShadow = true;
+      scene.add(wall);
+      return wall;
+    }
+
+    // 4つの壁を配置
+    createWall(30, 5, new THREE.Vector3(0, 2.5, -15), 0);      // 奥
+    createWall(30, 5, new THREE.Vector3(0, 2.5, 15), 0);       // 手前
+    createWall(30, 5, new THREE.Vector3(-15, 2.5, 0), Math.PI / 2);  // 左
+    createWall(30, 5, new THREE.Vector3(15, 2.5, 0), Math.PI / 2);   // 右
+
+    // 絵画フレームを作成する関数
+    function createArtwork(imageUrl, position, scale = 1) {
+      const group = new THREE.Group();
+      // フレーム
+      const frameGeometry = new THREE.BoxGeometry(scale * 2.2, scale * 1.6, 0.1);
+      const frameMaterial = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
+      const frame = new THREE.Mesh(frameGeometry, frameMaterial);
+      group.add(frame);
+      // 絵画
+      const textureLoader = new THREE.TextureLoader();
+      const artGeometry = new THREE.PlaneGeometry(scale * 2, scale * 1.5);
+      const artMaterial = new THREE.MeshStandardMaterial({ 
+        map: textureLoader.load(imageUrl, () => {
+          console.log('Loaded:', imageUrl);
+        }, undefined, (err) => {
+          console.error('Failed to load:', imageUrl, err);
+          artMaterial.color.set(0x666666);
+        }),
+        roughness: 0.8
+      });
+      const art = new THREE.Mesh(artGeometry, artMaterial);
+      art.position.z = 0.06;
+      group.add(art);
+      group.position.copy(position);
+      group.castShadow = true;
+      scene.add(group);
+      // URL埋め込み用プロパティ
+  group.userData.url = 'https://www.google.com'; // すべての絵に同じURL
+  return group;
+    }
+
+    // テキストパネルを作成する関数（壁に説明文を表示）
+    function createTextPanel(text, position, rotation, width = 3, height = 2) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1024;
+      canvas.height = 768;
+      const ctx = canvas.getContext('2d');
+      
+      // 背景
+      ctx.fillStyle = '#2a2a2a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // 枠
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 20;
+      ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+      
+      // テキスト
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 60px "MS Gothic", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('🎨 操作ガイド', canvas.width / 2, 120);
+      
+      ctx.font = '48px "MS Gothic", monospace';
+      ctx.textAlign = 'left';
+      const lines = text.split('\n');
+      let y = 220;
+      lines.forEach(line => {
+        ctx.fillText(line, 80, y);
+        y += 70;
+      });
+      
+      const texture = new THREE.CanvasTexture(canvas);
+      const panelGeometry = new THREE.PlaneGeometry(width, height);
+      const panelMaterial = new THREE.MeshStandardMaterial({ 
+        map: texture,
+        roughness: 0.9
+      });
+      const panel = new THREE.Mesh(panelGeometry, panelMaterial);
+      panel.position.copy(position);
+      panel.rotation.y = rotation;
+      panel.castShadow = true;
+      scene.add(panel);
+      
+      return panel;
+    }
+
+    // 作品を配置（サンプル画像）
+    // 奥の壁
+  createArtwork('https://picsum.photos/400/300?random=1', new THREE.Vector3(-6, 2.5, -14.9), 1);
+  createArtwork('https://picsum.photos/400/300?random=2', new THREE.Vector3(0, 2.5, -14.9), 1);
+  createArtwork('https://picsum.photos/400/300?random=3', new THREE.Vector3(6, 2.5, -14.9), 1);
+    // マウス左クリックで注視中の絵に遷移 & 注視中ハイライト
+    const raycaster = new THREE.Raycaster();
+    let lastHovered = null;
+    function updateArtworkHighlight() {
+      // カメラ中央からRayを飛ばす
+      raycaster.setFromCamera({x:0, y:0}, camera);
+      const clickable = [];
+      scene.traverse(obj => {
+        if (obj.type === 'Group' && obj.userData.url) clickable.push(obj);
+      });
+      const intersects = raycaster.intersectObjects(clickable, true);
+      // ハイライト処理
+      if (lastHovered && lastHovered.material) {
+        // 元の色に戻す
+        lastHovered.material.emissive && lastHovered.material.emissive.set(0x000000);
+        lastHovered = null;
+      }
+      if (intersects.length > 0) {
+        let target = intersects[0].object;
+        // フレームや絵画本体を取得
+        while (target && !target.userData.url && target.parent) target = target.parent;
+        if (target && target.children && target.children.length > 1) {
+          // 絵画本体をハイライト
+          const artMesh = target.children[1];
+          if (artMesh.material && artMesh.material.emissive) {
+            artMesh.material.emissive.set(0x2266ff);
+            lastHovered = artMesh;
+          }
+        }
+      }
+    }
+    renderer.domElement.addEventListener('click', (event) => {
+      if (!controls.isLocked) return;
+      // カメラ中央からRayを飛ばす
+      raycaster.setFromCamera({x:0, y:0}, camera);
+      const clickable = [];
+      scene.traverse(obj => {
+        if (obj.type === 'Group' && obj.userData.url) clickable.push(obj);
+      });
+      const intersects = raycaster.intersectObjects(clickable, true);
+      if (intersects.length > 0) {
+        let target = intersects[0].object;
+        while (target && !target.userData.url && target.parent) target = target.parent;
+        if (target && target.userData.url) {
+          if (confirm('この作品のページに移動しますか？\n' + target.userData.url)) {
+            window.open(target.userData.url, '_blank');
+          }
+        }
+      }
+    });
+    // 既存のanimate関数内でハイライトも呼び出す（重複定義を避ける）
+    // すでに animate() が定義されている場合は、
+    // updateArtworkHighlight() を既存のanimate内に追加してください。
+
+    // 手前の壁に操作説明パネルを配置
+    const guideText = `W / ↑ : 前進
+S / ↓ : 後退
+A / ← : 左移動
+D / → : 右移動
+E / ESC : 退室`;
+    createTextPanel(guideText, new THREE.Vector3(0, 2.5, 14.85), Math.PI, 4, 3);
+
+    // 左の壁
+    const leftArt1 = createArtwork('https://picsum.photos/400/300?random=4', new THREE.Vector3(-14.9, 2.5, -6), 1);
+    leftArt1.rotation.y = Math.PI / 2;
+    const leftArt2 = createArtwork('https://picsum.photos/400/300?random=5', new THREE.Vector3(-14.9, 2.5, 6), 1);
+    leftArt2.rotation.y = Math.PI / 2;
+
+    // 右の壁
+    const rightArt1 = createArtwork('https://picsum.photos/400/300?random=6', new THREE.Vector3(14.9, 2.5, -6), 1);
+    rightArt1.rotation.y = -Math.PI / 2;
+    const rightArt2 = createArtwork('https://picsum.photos/400/300?random=7', new THREE.Vector3(14.9, 2.5, 6), 1);
+    rightArt2.rotation.y = -Math.PI / 2;
+
+    // ポインターロックコントロール（FPS風操作）
+    const controls = new PointerLockControls(camera, document.body);
+    
+    // マウス感度を下げる（デフォルトより遅く）
+    controls.pointerSpeed = 0.3;
+
+    document.body.addEventListener('click', () => {
+      controls.lock();
+    });
+
+    controls.addEventListener('lock', () => {
+      document.getElementById('info').style.display = 'none';
+    });
+
+    controls.addEventListener('unlock', () => {
+      document.getElementById('info').style.display = 'block';
+    });
+
+    // 移動
+    const moveSpeed = 0.1;
+    const velocity = new THREE.Vector3();
+    const direction = new THREE.Vector3();
+    const keys = {};
+
+    document.addEventListener('keydown', (e) => {
+      keys[e.code] = true;
+      
+      // E キーで退室（マウスロック解除）
+      if (e.code === 'KeyE' && controls.isLocked) {
+        controls.unlock();
+      }
+    });
+
+    document.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+    });
+
+    function updateMovement() {
+      if (!controls.isLocked) return;
+
+      let moveForward = 0;
+      let moveRight = 0;
+
+      if (keys['KeyW'] || keys['ArrowUp']) moveForward = 1;     // W = 前進
+      if (keys['KeyS'] || keys['ArrowDown']) moveForward = -1;  // S = 後退
+      if (keys['KeyA'] || keys['ArrowLeft']) moveRight = -1;    // A = 左
+      if (keys['KeyD'] || keys['ArrowRight']) moveRight = 1;    // D = 右
+
+      // カメラの向きに基づいて移動（PointerLockControls のメソッドを使用）
+      controls.moveForward(moveForward * moveSpeed);
+      controls.moveRight(moveRight * moveSpeed);
+
+      // 範囲制限（壁の内側に留める）
+      camera.position.x = Math.max(-14, Math.min(14, camera.position.x));
+      camera.position.z = Math.max(-14, Math.min(14, camera.position.z));
+    }
+
+    // ウィンドウリサイズ対応
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // アニメーションループ
+    function animate() {
+      requestAnimationFrame(animate);
+      updateMovement();
+      renderer.render(scene, camera);
+    }
+
+    animate();
+  </script>
+</body>
+</html>

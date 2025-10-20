@@ -754,6 +754,7 @@ E / ESC : 退室`;
     const joyEl = document.getElementById('joyLeft');
     const joyKnob = document.getElementById('joyLeftKnob');
     const MAX_R = 50; // つまみの可動半径
+    const JOY_MOVE_FACTOR = 0.7; // 左ジョイスティックの感度（移動寄与を弱める）
     // UI用のアクティブなタッチID（ジョイスティック等）
     const activeUiTouchIds = new Set();
 
@@ -808,25 +809,24 @@ E / ESC : 退室`;
     // 視点回転（PC: PointerLock / モバイル: 画面ドラッグ）
     let yaw = controls.getObject().rotation.y;
     let pitch = camera.rotation.x;
-    const touchLookSpeed = 0.002; // モバイルのドラッグ感度（pxあたりラジアン）
+    const touchLookSpeed = 0.003; // モバイルのドラッグ感度（pxあたりラジアン）やや強め
     let lookTouchId = null;
     let lastLX = 0, lastLY = 0;
     // キャンバス上のドラッグで視点を回す（HUD操作中は無効）
     renderer.domElement.addEventListener('touchstart', (e) => {
       if (!isTouchDevice) return;
-      if (activeUiTouchIds.size > 0) return; // UI操作優先
-      const t = e.touches[0];
-      // HUD上の開始は無視
-      if (e.target && e.target.closest && e.target.closest('.hud')) return;
-      lookTouchId = t.identifier;
-      lastLX = t.clientX; lastLY = t.clientY;
+      // HUD上での開始は無視（ジョイスティック操作）
+      // ただし同時操作のため、ジョイスティック中でも別指がキャンバス上なら視点ドラッグ可能
+      const candidates = (e.changedTouches && e.changedTouches.length ? Array.from(e.changedTouches) : Array.from(e.touches));
+      const pick = candidates.find(t => !activeUiTouchIds.has(t.identifier) && !(document.elementFromPoint(t.clientX, t.clientY)?.closest?.('.hud')));
+      if (!pick) return;
+      lookTouchId = pick.identifier;
+      lastLX = pick.clientX; lastLY = pick.clientY;
       hasInteracted = true;
     }, { passive: false });
     renderer.domElement.addEventListener('touchmove', (e) => {
       if (!isTouchDevice) return;
       if (lookTouchId == null) return;
-      // UIタッチが有効なら視点ドラッグは停止
-      if (activeUiTouchIds.size > 0) return;
       const list = Array.from(e.touches);
       const t = list.find(tt => tt.identifier === lookTouchId);
       if (!t) return;
@@ -855,9 +855,9 @@ E / ESC : 退室`;
       if (keys['KeyD'] || keys['ArrowRight']) moveRight += 1;
       if (keys['KeyA'] || keys['ArrowLeft']) moveRight -= 1;
 
-      // 左ジョイスティックからの移動（前後: -y, 右左: x）
-      moveForward += -joyVec.y;
-      moveRight += joyVec.x;
+      // 左ジョイスティックからの移動（前後: -y, 右左: x）感度を弱める
+      moveForward += (-joyVec.y) * JOY_MOVE_FACTOR;
+      moveRight += (joyVec.x) * JOY_MOVE_FACTOR;
 
       if (moveForward !== 0) controls.moveForward(moveForward * moveSpeed);
       if (moveRight !== 0) controls.moveRight(moveRight * moveSpeed);

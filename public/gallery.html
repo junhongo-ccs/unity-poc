@@ -21,6 +21,21 @@
       display: none;
     }
 
+    /* PC用の操作オーバーレイ（デフォルト表示）。タッチ端末では後段の @media で非表示 */
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 15px;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 300px;
+      z-index: 1200;
+    }
+
     #info strong {
       font-size: 16px;
       display: block;
@@ -172,6 +187,11 @@
     @media (pointer: coarse) {
       #joyLeft {
         display: block;
+      }
+
+      /* タッチ端末ではPC向け操作案内を隠す */
+      #info {
+        display: none;
       }
     }
   </style>
@@ -705,11 +725,15 @@ E / ESC : 退室`;
     controls.addEventListener('lock', () => {
       hasInteracted = true; // 最初のロックでハイライト開始
       const cross = document.getElementById('crosshair');
+      const info = document.getElementById('info');
       if (cross) cross.style.display = 'block';
+      if (!isTouchDevice && info) info.style.display = 'none';
     });
     controls.addEventListener('unlock', () => {
       const cross = document.getElementById('crosshair');
+      const info = document.getElementById('info');
       if (cross) cross.style.display = 'none';
+      if (!isTouchDevice && info) info.style.display = 'block';
     });
 
     // キー入力と移動処理
@@ -739,7 +763,9 @@ E / ESC : 退室`;
       let activeId = null;
       let center = { x: 0, y: 0 };
       function setKnob(dx, dy) {
-        knob.style.transform = `translate(${dx}px, ${dy}px)`;
+        // 中心(50%,50%)からの相対オフセットで位置指定（transformは初期のcenter基準を維持）
+        knob.style.left = `calc(50% + ${dx}px)`;
+        knob.style.top = `calc(50% + ${dy}px)`;
       }
       function onStart(e) {
         const t = (e.touches ? e.touches[0] : e);
@@ -782,7 +808,7 @@ E / ESC : 退室`;
     // 視点回転（PC: PointerLock / モバイル: 画面ドラッグ）
     let yaw = controls.getObject().rotation.y;
     let pitch = camera.rotation.x;
-    const touchLookSpeed = 0.004; // モバイルのドラッグ感度（pxあたりラジアン）
+    const touchLookSpeed = 0.002; // モバイルのドラッグ感度（pxあたりラジアン）
     let lookTouchId = null;
     let lastLX = 0, lastLY = 0;
     // キャンバス上のドラッグで視点を回す（HUD操作中は無効）
@@ -807,18 +833,16 @@ E / ESC : 退室`;
       const dx = t.clientX - lastLX;
       const dy = t.clientY - lastLY;
       lastLX = t.clientX; lastLY = t.clientY;
+      // 水平方向（yaw）のみ回転。見上げ/見下げはしない。
       yaw -= dx * touchLookSpeed;
-      pitch -= dy * touchLookSpeed;
-      const limit = Math.PI / 2 - 0.01;
-      pitch = Math.max(-limit, Math.min(limit, pitch));
       controls.getObject().rotation.y = yaw;
-      camera.rotation.x = pitch;
       suppressClickUntil = Date.now() + 250; // ドラッグ直後の誤タップ抑止
       e.preventDefault();
     }, { passive: false });
     renderer.domElement.addEventListener('touchend', () => {
       lookTouchId = null;
     }, { passive: true });
+    renderer.domElement.addEventListener('touchcancel', () => { lookTouchId = null; }, { passive: true });
 
     function updateMovement() {
       // デスクトップはロック中のみ移動許可。モバイルはロック無しでもOK。

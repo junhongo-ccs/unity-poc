@@ -287,10 +287,10 @@
     const isTouchDevice = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
     // ライト
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.7);
     scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
     directionalLight.position.set(5, 10, 5);
     directionalLight.castShadow = true;
     // シャドウの品質と自己シャドウ抑制

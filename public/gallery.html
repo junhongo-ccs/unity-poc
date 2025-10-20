@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,36 +11,174 @@
       overflow: hidden;
       font-family: sans-serif;
     }
+
     canvas {
       display: block;
     }
+
     #info {
       position: absolute;
       top: 10px;
       left: 10px;
       color: white;
-      background: rgba(0,0,0,0.7);
+      background: rgba(0, 0, 0, 0.7);
       padding: 15px;
       border-radius: 8px;
       font-size: 14px;
       line-height: 1.6;
       max-width: 300px;
     }
+
     #info strong {
       font-size: 16px;
       display: block;
       margin-bottom: 8px;
     }
+
+    /* カスタム確認モーダル */
+    #confirmOverlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    #confirmOverlay.show {
+      display: flex;
+    }
+
+    #confirmDialog {
+      background: #1f2330;
+      color: #e6e6e6;
+      border-radius: 12px;
+      padding: 18px 18px 14px;
+      min-width: 300px;
+      max-width: min(92vw, 520px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+      border: 1px solid rgba(255, 255, 255, .08);
+    }
+
+    #confirmTitle {
+      font-weight: 700;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+
+    #confirmDesc {
+      font-size: 13px;
+      color: #bfc7d5;
+      margin-bottom: 14px;
+      word-break: break-all;
+    }
+
+    #confirmDesc a {
+      color: #8ab4ff;
+      text-decoration: underline;
+    }
+
+    #confirmActions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    #confirmActions button {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, .12);
+      background: #2a2f3a;
+      color: #e6e6e6;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    #confirmActions button.primary {
+      background: #3b82f6;
+      border-color: #3b82f6;
+      color: white;
+    }
+
+    /* 外部画像ハンドアイコン（任意で /public/images/hand.png を配置） */
+    #crosshairHandImg {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 48px;
+      height: 48px;
+      display: none;
+      image-rendering: auto;
+    }
+
+    /* スマホ縦向き時の回転案内（pointer:coarse でタッチデバイスに限定） */
+    #rotateHint {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      color: #fff;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+      z-index: 2000;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+
+    #rotateHint strong {
+      font-size: 20px;
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    @media screen and (orientation: portrait) and (pointer: coarse) {
+      #rotateHint {
+        display: flex;
+      }
+    }
   </style>
 </head>
+
 <body>
-  <div id="info">
-  <div id="crosshair" style="position:fixed;left:50%;top:50%;width:32px;height:32px;pointer-events:none;z-index:10;transform:translate(-50%,-50%);">
-    <svg width="32" height="32">
-      <line x1="16" y1="8" x2="16" y2="24" stroke="#fff" stroke-width="2"/>
-      <line x1="8" y1="16" x2="24" y2="16" stroke="#fff" stroke-width="2"/>
+  <!-- 十字カーソル（infoの外に配置して常時表示可能にする） -->
+  <div id="crosshair"
+    style="position:fixed;left:50%;top:50%;width:48px;height:48px;pointer-events:none;z-index:10;transform:translate(-50%,-50%);display:none;">
+    <!-- 通常の十字 -->
+    <svg id="crosshairCross" width="48" height="48" style="display:block;position:absolute;left:0;top:0;">
+      <line x1="24" y1="12" x2="24" y2="36" stroke="#fff" stroke-width="2" />
+      <line x1="12" y1="24" x2="36" y2="24" stroke="#fff" stroke-width="2" />
     </svg>
+    <!-- ホバー時の手アイコン（外部画像）。未配置時はクロスヘアのみ表示 -->
+    <img id="crosshairHandImg" src="./images/hand@2x.png" alt="hand" />
   </div>
+
+  <!-- カスタム確認モーダル（ブラウザ標準の confirm 置き換え用） -->
+  <div id="confirmOverlay" aria-hidden="true">
+    <div id="confirmDialog" role="dialog" aria-modal="true" aria-labelledby="confirmTitle"
+      aria-describedby="confirmDesc">
+      <div id="confirmTitle">この作品のページに移動しますか？</div>
+      <div id="confirmSub" style="font-size:12px;color:#9aa4b2;margin-bottom:8px;display:none;"></div>
+      <div id="confirmDesc">移動先: <a id="confirmUrl" href="#" target="_blank" rel="noopener"></a></div>
+      <div id="confirmActions">
+        <button id="confirmCancel">キャンセル</button>
+        <button id="confirmOk" class="primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 縦向き時の回転案内（スマホ向け） -->
+  <div id="rotateHint">
+    <div>
+      <strong>端末を横向きにしてください</strong>
+      ランドスケープモードでより快適に操作できます。
+    </div>
+  </div>
+
+  <div id="info">
     <strong>🎨 3D ギャラリー</strong>
     <div style="margin-bottom: 8px;">
       <strong>📍 操作方法</strong><br>
@@ -75,7 +214,7 @@
     scene.fog = new THREE.Fog(0x87ceeb, 0, 50);
 
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 1.6, 5); // 目の高さ
+    camera.position.set(0, 2.5, 5); // 絵画の中心の高さに合わせる
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -84,7 +223,7 @@
     document.body.appendChild(renderer.domElement);
 
     // ライト
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
     scene.add(ambientLight);
 
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -94,10 +233,10 @@
     directionalLight.shadow.mapSize.height = 2048;
     scene.add(directionalLight);
 
-    // 床
-    const floorGeometry = new THREE.PlaneGeometry(30, 30);
-    const floorMaterial = new THREE.MeshStandardMaterial({ 
-      color: 0xcccccc,
+    // 床（ピンク）
+    const floorGeometry = new THREE.PlaneGeometry(15, 15);
+    const floorMaterial = new THREE.MeshStandardMaterial({
+      color: 0xFF0083, // ピンク（指定: #FF0083）
       roughness: 0.8,
       metalness: 0.2
     });
@@ -106,10 +245,24 @@
     floor.receiveShadow = true;
     scene.add(floor);
 
+    // 天井（黄色）
+    const ceilingGeometry = new THREE.PlaneGeometry(15, 15);
+    const ceilingMaterial = new THREE.MeshStandardMaterial({
+      color: 0xFFFF00, // 黄色
+      roughness: 0.8,
+      metalness: 0.1,
+      side: THREE.DoubleSide
+    });
+    const ceiling = new THREE.Mesh(ceilingGeometry, ceilingMaterial);
+    ceiling.rotation.x = Math.PI / 2; // 下向き
+    ceiling.position.y = 5;
+    ceiling.receiveShadow = true;
+    scene.add(ceiling);
+
     // 壁を作成する関数
     function createWall(width, height, position, rotation) {
       const wallGeometry = new THREE.BoxGeometry(width, height, 0.2);
-      const wallMaterial = new THREE.MeshStandardMaterial({ 
+      const wallMaterial = new THREE.MeshStandardMaterial({
         color: 0xffffff,
         roughness: 0.9
       });
@@ -122,24 +275,24 @@
       return wall;
     }
 
-    // 4つの壁を配置
-    createWall(30, 5, new THREE.Vector3(0, 2.5, -15), 0);      // 奥
-    createWall(30, 5, new THREE.Vector3(0, 2.5, 15), 0);       // 手前
-    createWall(30, 5, new THREE.Vector3(-15, 2.5, 0), Math.PI / 2);  // 左
-    createWall(30, 5, new THREE.Vector3(15, 2.5, 0), Math.PI / 2);   // 右
+    // 壁を配置（1/4サイズに縮小）
+    createWall(15, 5, new THREE.Vector3(0, 2.5, -7.5), 0);      // 奥
+    createWall(15, 5, new THREE.Vector3(0, 2.5, 7.5), 0);       // 手前
+    createWall(15, 5, new THREE.Vector3(-7.5, 2.5, 0), Math.PI / 2);  // 左
+    createWall(15, 5, new THREE.Vector3(7.5, 2.5, 0), Math.PI / 2);   // 右
 
     // 絵画フレームを作成する関数
     function createArtwork(imageUrl, position, scale = 1) {
       const group = new THREE.Group();
       // フレーム
       const frameGeometry = new THREE.BoxGeometry(scale * 2.2, scale * 1.6, 0.1);
-      const frameMaterial = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
+      const frameMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 }); // 額縁は黒
       const frame = new THREE.Mesh(frameGeometry, frameMaterial);
       group.add(frame);
       // 絵画
       const textureLoader = new THREE.TextureLoader();
       const artGeometry = new THREE.PlaneGeometry(scale * 2, scale * 1.5);
-      const artMaterial = new THREE.MeshStandardMaterial({ 
+      const artMaterial = new THREE.MeshStandardMaterial({
         map: textureLoader.load(imageUrl, () => {
           console.log('Loaded:', imageUrl);
         }, undefined, (err) => {
@@ -153,10 +306,14 @@
       group.add(art);
       group.position.copy(position);
       group.castShadow = true;
+
+      // URL埋め込み用プロパティ（確実に設定）
+      group.userData = group.userData || {};
+      group.userData.url = 'https://www.google.com';
+      console.log('createArtwork: URL設定完了', group.userData.url);
+
       scene.add(group);
-      // URL埋め込み用プロパティ
-  group.userData.url = 'https://www.google.com'; // すべての絵に同じURL
-  return group;
+      return group;
     }
 
     // テキストパネルを作成する関数（壁に説明文を表示）
@@ -165,22 +322,22 @@
       canvas.width = 1024;
       canvas.height = 768;
       const ctx = canvas.getContext('2d');
-      
+
       // 背景
       ctx.fillStyle = '#2a2a2a';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
+
       // 枠
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 20;
       ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
-      
+
       // テキスト
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 60px "MS Gothic", monospace';
       ctx.textAlign = 'center';
       ctx.fillText('🎨 操作ガイド', canvas.width / 2, 120);
-      
+
       ctx.font = '48px "MS Gothic", monospace';
       ctx.textAlign = 'left';
       const lines = text.split('\n');
@@ -189,10 +346,10 @@
         ctx.fillText(line, 80, y);
         y += 70;
       });
-      
+
       const texture = new THREE.CanvasTexture(canvas);
       const panelGeometry = new THREE.PlaneGeometry(width, height);
-      const panelMaterial = new THREE.MeshStandardMaterial({ 
+      const panelMaterial = new THREE.MeshStandardMaterial({
         map: texture,
         roughness: 0.9
       });
@@ -201,146 +358,299 @@
       panel.rotation.y = rotation;
       panel.castShadow = true;
       scene.add(panel);
-      
+
       return panel;
     }
 
-    // 作品を配置（サンプル画像）
-    // 奥の壁
-  createArtwork('https://picsum.photos/400/300?random=1', new THREE.Vector3(-6, 2.5, -14.9), 1);
-  createArtwork('https://picsum.photos/400/300?random=2', new THREE.Vector3(0, 2.5, -14.9), 1);
-  createArtwork('https://picsum.photos/400/300?random=3', new THREE.Vector3(6, 2.5, -14.9), 1);
-    // マウス左クリックで注視中の絵に遷移 & 注視中ハイライト
-    const raycaster = new THREE.Raycaster();
-    let lastHovered = null;
-    function updateArtworkHighlight() {
-      // カメラ中央からRayを飛ばす
-      raycaster.setFromCamera({x:0, y:0}, camera);
-      const clickable = [];
-      scene.traverse(obj => {
-        if (obj.type === 'Group' && obj.userData.url) clickable.push(obj);
-      });
-      const intersects = raycaster.intersectObjects(clickable, true);
-      // ハイライト処理
-      if (lastHovered && lastHovered.material) {
-        // 元の色に戻す
-        lastHovered.material.emissive && lastHovered.material.emissive.set(0x000000);
-        lastHovered = null;
+    // 作品の画像とリンクを /public/images から読み込んでカスタマイズ可能にする
+    async function chooseImage(candidates, fallback) {
+      // Imageオブジェクトで順に存在チェック（同一オリジンなのでOK）。見つからなければfallback。
+      for (const url of candidates) {
+        const ok = await new Promise(resolve => {
+          const img = new Image();
+          img.onload = () => resolve(true);
+          img.onerror = () => resolve(false);
+          img.src = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now(); // キャッシュバイパス
+        });
+        if (ok) return url;
       }
-      if (intersects.length > 0) {
-        let target = intersects[0].object;
-        // フレームや絵画本体を取得
-        while (target && !target.userData.url && target.parent) target = target.parent;
-        if (target && target.children && target.children.length > 1) {
-          // 絵画本体をハイライト
-          const artMesh = target.children[1];
-          if (artMesh.material && artMesh.material.emissive) {
-            artMesh.material.emissive.set(0x2266ff);
-            lastHovered = artMesh;
-          }
-        }
-      }
+      return fallback;
     }
-    renderer.domElement.addEventListener('click', (event) => {
-      if (!controls.isLocked) return;
+
+    function normalizeLinkMeta(value, fallbackUrl) {
+      if (!value) return { url: fallbackUrl };
+      if (typeof value === 'string') return { url: value };
+      const url = typeof value.url === 'string' ? value.url : fallbackUrl;
+      const title = typeof value.title === 'string' ? value.title : undefined;
+      const desc = typeof value.desc === 'string' ? value.desc : undefined;
+      return { url, title, desc };
+    }
+
+    async function loadLinksConfig() {
+      try {
+        const res = await fetch('/images/links.json', { cache: 'no-store' });
+        if (res.ok) return await res.json();
+      } catch { }
+      // 既定のリンク
+      return { back: 'https://www.google.com', left: 'https://www.google.com', right: 'https://www.google.com' };
+    }
+
+    async function initArtworks() {
+      const [links, backImg, leftImg, rightImg] = await Promise.all([
+        loadLinksConfig(),
+        chooseImage(['/images/back.webp', '/images/back.png', '/images/back.jpg', '/images/back.jpeg'], 'https://picsum.photos/400/300?random=2'),
+        chooseImage(['/images/left.webp', '/images/left.png', '/images/left.jpg', '/images/left.jpeg'], 'https://picsum.photos/400/300?random=4'),
+        chooseImage(['/images/right.webp', '/images/right.png', '/images/right.jpg', '/images/right.jpeg'], 'https://picsum.photos/400/300?random=6')
+      ]);
+
+      // メタを整形
+      const backMeta = normalizeLinkMeta(links.back, 'https://www.google.com');
+      const leftMeta = normalizeLinkMeta(links.left, 'https://www.google.com');
+      const rightMeta = normalizeLinkMeta(links.right, 'https://www.google.com');
+
+      // ファイル名からのタイトル補完（titleが無ければ）
+      const nameFrom = (p) => {
+        try { return p.split('/').pop().split('?')[0].replace(/\.[^.]+$/, ''); } catch { return undefined; }
+      };
+      backMeta.title = backMeta.title || nameFrom(backImg) || '作品';
+      leftMeta.title = leftMeta.title || nameFrom(leftImg) || '作品';
+      rightMeta.title = rightMeta.title || nameFrom(rightImg) || '作品';
+
+      // 奥の壁（中央）
+      const backArt = createArtwork(backImg, new THREE.Vector3(0, 2.5, -7.4), 1.5);
+      backArt.userData.url = backMeta.url;
+      backArt.userData.title = backMeta.title;
+      backArt.userData.desc = backMeta.desc;
+      console.log('奥の壁 画像:', backImg, 'URL:', backArt.userData.url, 'TITLE:', backArt.userData.title);
+
+      // 左の壁（中央）
+      const leftArt = createArtwork(leftImg, new THREE.Vector3(-7.4, 2.5, 0), 1.5);
+      leftArt.rotation.y = Math.PI / 2;
+      leftArt.userData.url = leftMeta.url;
+      leftArt.userData.title = leftMeta.title;
+      leftArt.userData.desc = leftMeta.desc;
+      console.log('左の壁 画像:', leftImg, 'URL:', leftArt.userData.url, 'TITLE:', leftArt.userData.title);
+
+      // 右の壁（中央）
+      const rightArt = createArtwork(rightImg, new THREE.Vector3(7.4, 2.5, 0), 1.5);
+      rightArt.rotation.y = -Math.PI / 2;
+      rightArt.userData.url = rightMeta.url;
+      rightArt.userData.title = rightMeta.title;
+      rightArt.userData.desc = rightMeta.desc;
+      console.log('右の壁 画像:', rightImg, 'URL:', rightArt.userData.url, 'TITLE:', rightArt.userData.title);
+    }
+    // マウス左クリックで注視中の絵に遷移 & 注視中ハイライト
+    let hasInteracted = false; // 初期ハイライト抑制用
+    const raycaster = new THREE.Raycaster();
+    function updateArtworkHighlight() {
+      if (!hasInteracted) return; // 初期はハイライトしない
       // カメラ中央からRayを飛ばす
-      raycaster.setFromCamera({x:0, y:0}, camera);
+      raycaster.setFromCamera({ x: 0, y: 0 }, camera);
       const clickable = [];
       scene.traverse(obj => {
         if (obj.type === 'Group' && obj.userData.url) clickable.push(obj);
       });
       const intersects = raycaster.intersectObjects(clickable, true);
+      // インタラクティブ対象にヒットしているか
+      let hovering = false;
       if (intersects.length > 0) {
-        let target = intersects[0].object;
-        while (target && !target.userData.url && target.parent) target = target.parent;
-        if (target && target.userData.url) {
-          if (confirm('この作品のページに移動しますか？\n' + target.userData.url)) {
-            window.open(target.userData.url, '_blank');
+        let t = intersects[0].object;
+        while (t && !t.userData?.url && t.parent) t = t.parent;
+        hovering = !!(t && t.userData && t.userData.url);
+      }
+
+      // クロスヘアを手アイコンにトグル（標準カーソルはロック中は非表示）
+      const cross = document.getElementById('crosshairCross');
+      const handImg = document.getElementById('crosshairHandImg');
+      const useImg = handImg && handImg.complete && handImg.naturalWidth > 0;
+      if (useImg && handImg) handImg.style.display = hovering ? 'block' : 'none';
+      if (cross) cross.style.display = (hovering && useImg) ? 'none' : 'block';
+    }
+    // 統合されたクリック処理
+    // カスタム確認モーダル
+    function showConfirmNavigate(meta) {
+      return new Promise((resolve) => {
+        const overlay = document.getElementById('confirmOverlay');
+        const urlEl = document.getElementById('confirmUrl');
+        const titleEl = document.getElementById('confirmTitle');
+        const subEl = document.getElementById('confirmSub');
+        const okBtn = document.getElementById('confirmOk');
+        const cancelBtn = document.getElementById('confirmCancel');
+
+        function cleanup() {
+          overlay.classList.remove('show');
+          overlay.setAttribute('aria-hidden', 'true');
+          document.removeEventListener('keydown', onKey);
+          okBtn.removeEventListener('click', onOk);
+          cancelBtn.removeEventListener('click', onCancel);
+        }
+        function onOk() { cleanup(); resolve(true); }
+        function onCancel() { cleanup(); resolve(false); }
+        function onKey(e) {
+          if (e.key === 'Escape') onCancel();
+          if (e.key === 'Enter') onOk();
+        }
+
+        const titleText = (meta && meta.title) ? `「${meta.title}」を開きますか？` : 'この作品のページに移動しますか？';
+        if (titleEl) titleEl.textContent = titleText;
+        if (subEl) {
+          if (meta && meta.desc) {
+            subEl.textContent = meta.desc;
+            subEl.style.display = 'block';
+          } else {
+            subEl.textContent = '';
+            subEl.style.display = 'none';
           }
         }
-      }
-    });
-    // 既存のanimate関数内でハイライトも呼び出す（重複定義を避ける）
-    // すでに animate() が定義されている場合は、
-    // updateArtworkHighlight() を既存のanimate内に追加してください。
+        const url = (meta && meta.url) ? meta.url : 'https://www.google.com';
+        urlEl.textContent = url;
+        urlEl.href = url;
+        overlay.classList.add('show');
+        overlay.setAttribute('aria-hidden', 'false');
+        cancelBtn.focus();
+        document.addEventListener('keydown', onKey);
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+      });
+    }
 
+    renderer.domElement.addEventListener('click', async (event) => {
+      console.log('=== レンダラークリック検知 ===');
+      console.log('マウスロック状態:', controls.isLocked);
+
+      // マウスロックされていない場合は「入室」のみ（ロック要求）で、このクリックでは遷移しない
+      if (!controls.isLocked) {
+        console.log('マウスロック要求中...');
+        event.stopPropagation();
+        requestPointerLock();
+        return;
+      }
+
+      // マウスロック中の絵画クリック処理
+      console.log('マウスロック中 - 絵画クリック処理開始');
+
+      // 毎回レイキャストして最前面のクリック対象を取得
+      raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+      const clickable = [];
+      scene.traverse(obj => {
+        if (obj.type === 'Group' && obj.userData && obj.userData.url) clickable.push(obj);
+      });
+      const hits = raycaster.intersectObjects(clickable, true);
+      if (hits.length === 0) {
+        console.log('絵画との交差なし - クリックしたのは空間');
+        return;
+      }
+
+      // 交差オブジェクトの親を辿ってGroupを取得
+      let target = hits[0].object;
+      while (target && !target.userData?.url && target.parent) target = target.parent;
+      const meta = target && target.userData ? {
+        url: target.userData.url,
+        title: target.userData.title,
+        desc: target.userData.desc
+      } : { url: 'https://www.google.com' };
+      console.log('リンク遷移候補:', meta);
+      // 標準 confirm は使わず、カスタムモーダルで確認
+      try { controls.unlock(); } catch { }
+      const ok = await showConfirmNavigate(meta);
+      if (ok) window.open(meta.url, '_blank');
+    });
+
+    // PointerLockControls (FPS風カメラ操作)
     // 手前の壁に操作説明パネルを配置
     const guideText = `W / ↑ : 前進
 S / ↓ : 後退
 A / ← : 左移動
 D / → : 右移動
 E / ESC : 退室`;
-    createTextPanel(guideText, new THREE.Vector3(0, 2.5, 14.85), Math.PI, 4, 3);
+    createTextPanel(guideText, new THREE.Vector3(0, 2.5, 7.4), Math.PI, 4, 3);
 
-    // 左の壁
-    const leftArt1 = createArtwork('https://picsum.photos/400/300?random=4', new THREE.Vector3(-14.9, 2.5, -6), 1);
-    leftArt1.rotation.y = Math.PI / 2;
-    const leftArt2 = createArtwork('https://picsum.photos/400/300?random=5', new THREE.Vector3(-14.9, 2.5, 6), 1);
-    leftArt2.rotation.y = Math.PI / 2;
-
-    // 右の壁
-    const rightArt1 = createArtwork('https://picsum.photos/400/300?random=6', new THREE.Vector3(14.9, 2.5, -6), 1);
-    rightArt1.rotation.y = -Math.PI / 2;
-    const rightArt2 = createArtwork('https://picsum.photos/400/300?random=7', new THREE.Vector3(14.9, 2.5, 6), 1);
-    rightArt2.rotation.y = -Math.PI / 2;
+    // カスタマイズ可能な作品を初期化
+    initArtworks();
 
     // ポインターロックコントロール（FPS風操作）
-    const controls = new PointerLockControls(camera, document.body);
-    
+    // クリック対象と一致させてロック成功率を上げるため canvas をターゲットにする
+    const controls = new PointerLockControls(camera, renderer.domElement);
+    // カメラを内包するコントロール用オブジェクトをシーンに追加し、初期位置を設定
+    scene.add(controls.getObject());
+    controls.getObject().position.set(0, 2.5, 5);
+
     // マウス感度を下げる（デフォルトより遅く）
     controls.pointerSpeed = 0.3;
 
-    document.body.addEventListener('click', () => {
-      controls.lock();
-    });
+    // マウスロック処理を強化（最小実装）
+    async function tryLockLandscape() {
+      // フルスクリーン + 画面の向きを横に固定を試みる（対応ブラウザのみ）
+      try {
+        if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen();
+        }
+        if (screen.orientation && screen.orientation.lock) {
+          await screen.orientation.lock('landscape');
+        }
+      } catch (e) {
+        console.warn('orientation lock failed (allowed on some browsers only):', e?.message || e);
+      }
+    }
 
+    function requestPointerLock() {
+      console.log('マウスロック要求開始');
+      try {
+        // モバイルでの横向き固定を試す（失敗しても無視）
+        tryLockLandscape();
+        controls.lock();
+        console.log('controls.lock()を実行しました');
+      } catch (error) {
+        console.error('マウスロックに失敗:', error);
+      }
+    }
+
+    // ロック/アンロック時のUI
     controls.addEventListener('lock', () => {
-      document.getElementById('info').style.display = 'none';
+      hasInteracted = true; // 最初のロックでハイライト開始
+      const info = document.getElementById('info');
+      const cross = document.getElementById('crosshair');
+      if (info) info.style.display = 'none';
+      if (cross) cross.style.display = 'block';
     });
-
     controls.addEventListener('unlock', () => {
-      document.getElementById('info').style.display = 'block';
+      const info = document.getElementById('info');
+      const cross = document.getElementById('crosshair');
+      if (info) info.style.display = 'block';
+      if (cross) cross.style.display = 'none';
     });
 
-    // 移動
-    const moveSpeed = 0.1;
-    const velocity = new THREE.Vector3();
-    const direction = new THREE.Vector3();
+    // キー入力と移動処理
+    const moveSpeed = 0.12;
     const keys = {};
-
     document.addEventListener('keydown', (e) => {
       keys[e.code] = true;
-      
-      // E キーで退室（マウスロック解除）
-      if (e.code === 'KeyE' && controls.isLocked) {
-        controls.unlock();
-      }
+      // Eキーでロック解除
+      if (e.code === 'KeyE' && controls.isLocked) controls.unlock();
     });
-
-    document.addEventListener('keyup', (e) => {
-      keys[e.code] = false;
-    });
+    document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+    // マウス移動があればユーザー操作済みとみなす
+    renderer.domElement.addEventListener('mousemove', () => { hasInteracted = true; });
 
     function updateMovement() {
+      // ロック中のみ移動許可（視点回転と合わせるため）
       if (!controls.isLocked) return;
 
       let moveForward = 0;
       let moveRight = 0;
+      if (keys['KeyW'] || keys['ArrowUp']) moveForward += 1;
+      if (keys['KeyS'] || keys['ArrowDown']) moveForward -= 1;
+      if (keys['KeyD'] || keys['ArrowRight']) moveRight += 1;
+      if (keys['KeyA'] || keys['ArrowLeft']) moveRight -= 1;
 
-      if (keys['KeyW'] || keys['ArrowUp']) moveForward = 1;     // W = 前進
-      if (keys['KeyS'] || keys['ArrowDown']) moveForward = -1;  // S = 後退
-      if (keys['KeyA'] || keys['ArrowLeft']) moveRight = -1;    // A = 左
-      if (keys['KeyD'] || keys['ArrowRight']) moveRight = 1;    // D = 右
+      if (moveForward !== 0) controls.moveForward(moveForward * moveSpeed);
+      if (moveRight !== 0) controls.moveRight(moveRight * moveSpeed);
 
-      // カメラの向きに基づいて移動（PointerLockControls のメソッドを使用）
-      controls.moveForward(moveForward * moveSpeed);
-      controls.moveRight(moveRight * moveSpeed);
-
-      // 範囲制限（壁の内側に留める）
-      camera.position.x = Math.max(-14, Math.min(14, camera.position.x));
-      camera.position.z = Math.max(-14, Math.min(14, camera.position.z));
+      // 壁内にクランプ（15x15相当）
+      const obj = controls.getObject();
+      obj.position.x = Math.max(-7, Math.min(7, obj.position.x));
+      obj.position.z = Math.max(-7, Math.min(7, obj.position.z));
     }
-
     // ウィンドウリサイズ対応
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
@@ -352,10 +662,12 @@ E / ESC : 退室`;
     function animate() {
       requestAnimationFrame(animate);
       updateMovement();
+      updateArtworkHighlight(); // ハイライト更新を追加
       renderer.render(scene, camera);
     }
 
     animate();
   </script>
 </body>
+
 </html>

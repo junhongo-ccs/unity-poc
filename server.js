@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 const app = express();
 app.use(cors({ origin: process.env.ALLOW_ORIGIN?.split(",") || "*" }));
 app.use(express.static("public"));       // テスト用ページやWebGLビルドを配信
-app.get("/health", (_, res) => res.send("ok"));
+app.get("/health", (_req, res) => res.send("ok"));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
@@ -24,7 +24,7 @@ function broadcast(obj, exceptId = null) {
   }
 }
 
-wss.on("connection", (ws, req) => {
+wss.on("connection", (ws, _req) => {
   // 5人制限
   const current = [...clients.values()].filter(c => c.room === ROOM).length;
   if (current >= MAX_CLIENTS) {
@@ -37,13 +37,17 @@ wss.on("connection", (ws, req) => {
 
   // 既存プレイヤーの状態を初期送信
   const snapshot = {};
-  for (const [pid, c] of clients) if (pid !== id && c.state) snapshot[pid] = c.state;
+  for (const [pid, c] of clients) {
+    if (pid !== id && c.state) {
+      snapshot[pid] = c.state;
+    }
+  }
   ws.send(JSON.stringify({ type: "init", players: snapshot, id }));
 
   // 参加通知
   broadcast({ type: "join", id }, id);
 
-  ws.on("message", (data) => {
+  ws.on("message", data => {
     try {
       const msg = JSON.parse(data.toString());
       const entry = clients.get(id);
@@ -63,7 +67,9 @@ wss.on("connection", (ws, req) => {
         entry.lastSeen = Date.now();
         broadcast({ type: "state", id, state: msg.state }, id);
       }
-    } catch {}
+    } catch {
+      // エラーを無視（不正なJSONメッセージ）
+    }
   });
 
   ws.on("close", () => {
@@ -73,16 +79,23 @@ wss.on("connection", (ws, req) => {
 });
 
 // 死活監視（ゴースト掃除）
+const GHOST_CLEANUP_TIMEOUT = 15000; // 15秒
+const CLEANUP_INTERVAL = 5000; // 5秒
 setInterval(() => {
   const now = Date.now();
   for (const [id, c] of clients) {
-    if (now - c.lastSeen > 15000) { // 15s
-      try { c.ws.terminate(); } catch {}
+    if (now - c.lastSeen > GHOST_CLEANUP_TIMEOUT) {
+      try {
+        c.ws.terminate();
+      } catch {
+        // 接続終了エラーを無視
+      }
       clients.delete(id);
       broadcast({ type: "leave", id });
     }
   }
-}, 5000);
+}, CLEANUP_INTERVAL);
 
-const port = process.env.PORT || 3000;
+const DEFAULT_PORT = 3000;
+const port = process.env.PORT || DEFAULT_PORT;
 server.listen(port, () => console.log("listening on", port));

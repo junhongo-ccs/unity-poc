@@ -4,7 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "node server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "lint:check": "eslint --print-config eslint.config.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -12,5 +15,13 @@
     "three": "^0.180.0",
     "uuid": "^9.0.1",
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.38.0",
+    "eslint": "^9.38.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-no-unsanitized": "^4.1.4",
+    "eslint-plugin-security": "^3.0.1"
   }
 }

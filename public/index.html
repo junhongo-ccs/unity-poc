@@ -8,8 +8,16 @@
   <style>body{font-family:sans-serif;padding:16px} .me{color:#333} .other{color:#666}</style>
 </head>
 <body>
-<h1>WS Test (Arrow keys to move)</h1>
-<pre id="log"></pre>
+<noscript>
+  <meta http-equiv="refresh" content="0; url=/gallery.html" />
+  <p>Redirecting to <a href="/gallery.html">/gallery.html</a> …</p>
+</noscript>
+<script>
+// ルートに来たらギャラリーへリダイレクト
+location.replace('/gallery.html');
+</script>
+<h1 style="display:none">WS Test (Arrow keys to move)</h1>
+<pre id="log" style="display:none"></pre>
 <script>
 const log = (m)=>document.getElementById('log').textContent = m + "\n" + document.getElementById('log').textContent;
 
@@ -46,11 +54,8 @@ document.addEventListener("keydown",(e)=>{
   sendState();
 });
 
-setInterval(()=>{
-  let txt = `me ${JSON.stringify(me)}\n`;
-  for(const id in others) txt += `${id.slice(0,8)} ${JSON.stringify(others[id])}\n`;
-  log(txt);
-}, 500);
+// 旧テストログは非表示のまま（互換用に残置）
+setInterval(()=>{}, 2000);
 </script>
 </body>
 </html>

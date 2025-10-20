@@ -1,0 +1,17 @@
+{
+    "back": {
+        "url": "https://biba-art.com/collections/painting",
+        "title": "Painting",
+        "desc": "Creators-Stage 絵画コレクション"
+    },
+    "left": {
+        "url": "https://biba-art.com/collections/three-dimensionalworks",
+        "title": "Three-dimensional Works",
+        "desc": "Creators-Stage 立体作品"
+    },
+    "right": {
+        "url": "https://biba-art.com/collections/illustration",
+        "title": "Illustration",
+        "desc": "Creators-Stage イラスト作品"
+    }
+}

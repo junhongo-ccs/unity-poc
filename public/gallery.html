@@ -16,17 +16,9 @@
       display: block;
     }
 
+    /* PC用の操作オーバーレイは常時非表示（壁パネルは別なのでOK） */
     #info {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      color: white;
-      background: rgba(0, 0, 0, 0.7);
-      padding: 15px;
-      border-radius: 8px;
-      font-size: 14px;
-      line-height: 1.6;
-      max-width: 300px;
+      display: none;
     }
 
     #info strong {
@@ -78,7 +70,10 @@
       color: #8ab4ff;
       text-decoration: underline;
     }
-    #confirmSub { white-space: pre-line; }
+
+    #confirmSub {
+      white-space: pre-line;
+    }
 
     #confirmActions {
       display: flex;
@@ -128,6 +123,8 @@
       z-index: 2000;
       font-size: 16px;
       line-height: 1.6;
+      pointer-events: none;
+      /* 案内は表示のみ。背後の操作は許可 */
     }
 
     #rotateHint strong {
@@ -139,6 +136,42 @@
     @media screen and (orientation: portrait) and (pointer: coarse) {
       #rotateHint {
         display: flex;
+      }
+    }
+
+    /* === モバイル操作UI（pointer:coarse のみ表示）=== */
+    .hud {
+      position: fixed;
+      z-index: 1500;
+      display: none;
+    }
+
+    .circle {
+      width: 120px;
+      height: 120px;
+      border-radius: 60px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      touch-action: none;
+      position: relative;
+    }
+
+    .knob {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 56px;
+      height: 56px;
+      border-radius: 28px;
+      background: rgba(255, 255, 255, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    @media (pointer: coarse) {
+      #joyLeft {
+        display: block;
       }
     }
   </style>
@@ -196,6 +229,14 @@
     </div>
   </div>
 
+  <!-- モバイル用ジョイスティック（左下:移動 / 右下:視点） -->
+  <div id="joyLeft" class="hud" style="left:16px;bottom:16px;">
+    <div class="circle">
+      <div class="knob" id="joyLeftKnob"></div>
+    </div>
+  </div>
+
+
   <script type="importmap">
     {
       "imports": {
@@ -222,6 +263,8 @@
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.body.appendChild(renderer.domElement);
+
+    const isTouchDevice = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
     // ライト
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
@@ -443,6 +486,7 @@
     // マウス左クリックで注視中の絵に遷移 & 注視中ハイライト
     let hasInteracted = false; // 初期ハイライト抑制用
     const raycaster = new THREE.Raycaster();
+    let suppressClickUntil = 0; // UI操作直後の誤タップ抑制
     function updateArtworkHighlight() {
       if (!hasInteracted) return; // 初期はハイライトしない
       // カメラ中央からRayを飛ばす
@@ -492,7 +536,7 @@
           if (e.key === 'Enter') onOk();
         }
 
-        const titleText = (meta && meta.title) ? `「${meta.title}」を開きますか？` : 'この作品のページに移動しますか？';
+        const titleText = (meta && meta.title) ? `「${meta.title}」へ移動しますか？` : 'この作品のページに移動しますか？';
         if (titleEl) titleEl.textContent = titleText;
         if (subEl) {
           if (meta && meta.desc) {
@@ -516,15 +560,20 @@
     }
 
     renderer.domElement.addEventListener('click', async (event) => {
+      if (Date.now() < suppressClickUntil) { console.log('UI操作後の誤タップ抑止'); return; }
       console.log('=== レンダラークリック検知 ===');
       console.log('マウスロック状態:', controls.isLocked);
 
       // マウスロックされていない場合は「入室」のみ（ロック要求）で、このクリックでは遷移しない
       if (!controls.isLocked) {
-        console.log('マウスロック要求中...');
-        event.stopPropagation();
-        requestPointerLock();
-        return;
+        if (!isTouchDevice) {
+          console.log('マウスロック要求中...');
+          event.stopPropagation();
+          requestPointerLock();
+          return;
+        } else {
+          console.log('タッチ端末: ロック無しでクリック処理を継続');
+        }
       }
 
       // マウスロック中の絵画クリック処理
@@ -556,6 +605,52 @@
       const ok = await showConfirmNavigate(meta);
       if (ok) window.open(meta.url, '_blank');
     });
+
+    // 画面上の任意位置タップで遠距離選択（モバイル向け）
+    function findHitMetaAtNDC(nx, ny) {
+      raycaster.setFromCamera({ x: nx, y: ny }, camera);
+      const clickable = [];
+      scene.traverse(obj => { if (obj.type === 'Group' && obj.userData?.url) clickable.push(obj); });
+      const hits = raycaster.intersectObjects(clickable, true);
+      if (hits.length === 0) return null;
+      let target = hits[0].object;
+      while (target && !target.userData?.url && target.parent) target = target.parent;
+      if (!target || !target.userData?.url) return null;
+      return { url: target.userData.url, title: target.userData.title, desc: target.userData.desc };
+    }
+
+    let tap = { id: null, x: 0, y: 0, moved: false, t0: 0 };
+    const TAP_MS = 450;
+    const TAP_PX = 14;
+    renderer.domElement.addEventListener('touchstart', (e) => {
+      if (!isTouchDevice) return;
+      const t = e.touches[0];
+      tap = { id: t.identifier, x: t.clientX, y: t.clientY, moved: false, t0: Date.now() };
+    }, { passive: true });
+    renderer.domElement.addEventListener('touchmove', (e) => {
+      if (!isTouchDevice) return;
+      const list = Array.from(e.touches);
+      const t = list.find(tt => tt.identifier === tap.id);
+      if (!t) return;
+      if (Math.hypot(t.clientX - tap.x, t.clientY - tap.y) > TAP_PX) tap.moved = true;
+    }, { passive: true });
+    renderer.domElement.addEventListener('touchend', async (e) => {
+      if (!isTouchDevice) return;
+      // 誤タップ抑止ウィンドウ中は無視
+      if (Date.now() < suppressClickUntil) return;
+      const dt = Date.now() - tap.t0;
+      if (tap.moved || dt > TAP_MS) return;
+      const cx = tap.x, cy = tap.y;
+      // NDC に変換
+      const rect = renderer.domElement.getBoundingClientRect();
+      const nx = ((cx - rect.left) / rect.width) * 2 - 1;
+      const ny = -(((cy - rect.top) / rect.height) * 2 - 1);
+      const meta = findHitMetaAtNDC(nx, ny);
+      if (!meta) return;
+      try { controls.unlock(); } catch { }
+      const ok = await showConfirmNavigate(meta);
+      if (ok) window.open(meta.url, '_blank');
+    }, { passive: true });
 
     // PointerLockControls (FPS風カメラ操作)
     // 手前の壁に操作説明パネルを配置
@@ -609,15 +704,11 @@ E / ESC : 退室`;
     // ロック/アンロック時のUI
     controls.addEventListener('lock', () => {
       hasInteracted = true; // 最初のロックでハイライト開始
-      const info = document.getElementById('info');
       const cross = document.getElementById('crosshair');
-      if (info) info.style.display = 'none';
       if (cross) cross.style.display = 'block';
     });
     controls.addEventListener('unlock', () => {
-      const info = document.getElementById('info');
       const cross = document.getElementById('crosshair');
-      if (info) info.style.display = 'block';
       if (cross) cross.style.display = 'none';
     });
 
@@ -630,12 +721,108 @@ E / ESC : 退室`;
       if (e.code === 'KeyE' && controls.isLocked) controls.unlock();
     });
     document.addEventListener('keyup', (e) => { keys[e.code] = false; });
-    // マウス移動があればユーザー操作済みとみなす
+    // マウス/タッチ入力があればユーザー操作済みとみなす
     renderer.domElement.addEventListener('mousemove', () => { hasInteracted = true; });
+    renderer.domElement.addEventListener('touchstart', () => { hasInteracted = true; }, { passive: true });
+
+    // === モバイル操作（ジョイスティック/ルックパッド） ===
+    let joyVec = { x: 0, y: 0 };
+    const joyEl = document.getElementById('joyLeft');
+    const joyKnob = document.getElementById('joyLeftKnob');
+    const MAX_R = 50; // つまみの可動半径
+    // UI用のアクティブなタッチID（ジョイスティック等）
+    const activeUiTouchIds = new Set();
+
+    function bindPad(container, knob, onChange) {
+      if (!container) return;
+      const circle = container.querySelector('.circle');
+      let activeId = null;
+      let center = { x: 0, y: 0 };
+      function setKnob(dx, dy) {
+        knob.style.transform = `translate(${dx}px, ${dy}px)`;
+      }
+      function onStart(e) {
+        const t = (e.touches ? e.touches[0] : e);
+        const rect = circle.getBoundingClientRect();
+        center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        activeId = t.identifier ?? 'mouse';
+        if (t.identifier != null) activeUiTouchIds.add(activeId);
+        onMove(e);
+        e.preventDefault();
+      }
+      function onMove(e) {
+        const list = e.touches ? Array.from(e.touches) : [e];
+        const t = list.find(tt => (tt.identifier ?? 'mouse') === activeId);
+        if (!t) return;
+        const dx = t.clientX - center.x;
+        const dy = t.clientY - center.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const clamped = Math.min(len, MAX_R);
+        const nx = (dx / len) * (clamped);
+        const ny = (dy / len) * (clamped);
+        // 見かけ位置
+        setKnob(nx, ny);
+        // -1..1 の正規化
+        onChange({ x: nx / MAX_R, y: ny / MAX_R });
+        suppressClickUntil = Date.now() + 300; // 誤タップ抑止
+        e.preventDefault();
+      }
+      function onEnd() {
+        if (activeId != null) activeUiTouchIds.delete(activeId);
+        activeId = null; setKnob(0, 0); onChange({ x: 0, y: 0 });
+      }
+      circle.addEventListener('touchstart', onStart, { passive: false });
+      circle.addEventListener('touchmove', onMove, { passive: false });
+      circle.addEventListener('touchend', onEnd);
+      circle.addEventListener('touchcancel', onEnd);
+    }
+
+    bindPad(joyEl, joyKnob, v => { joyVec = v; hasInteracted = true; });
+
+    // 視点回転（PC: PointerLock / モバイル: 画面ドラッグ）
+    let yaw = controls.getObject().rotation.y;
+    let pitch = camera.rotation.x;
+    const touchLookSpeed = 0.004; // モバイルのドラッグ感度（pxあたりラジアン）
+    let lookTouchId = null;
+    let lastLX = 0, lastLY = 0;
+    // キャンバス上のドラッグで視点を回す（HUD操作中は無効）
+    renderer.domElement.addEventListener('touchstart', (e) => {
+      if (!isTouchDevice) return;
+      if (activeUiTouchIds.size > 0) return; // UI操作優先
+      const t = e.touches[0];
+      // HUD上の開始は無視
+      if (e.target && e.target.closest && e.target.closest('.hud')) return;
+      lookTouchId = t.identifier;
+      lastLX = t.clientX; lastLY = t.clientY;
+      hasInteracted = true;
+    }, { passive: false });
+    renderer.domElement.addEventListener('touchmove', (e) => {
+      if (!isTouchDevice) return;
+      if (lookTouchId == null) return;
+      // UIタッチが有効なら視点ドラッグは停止
+      if (activeUiTouchIds.size > 0) return;
+      const list = Array.from(e.touches);
+      const t = list.find(tt => tt.identifier === lookTouchId);
+      if (!t) return;
+      const dx = t.clientX - lastLX;
+      const dy = t.clientY - lastLY;
+      lastLX = t.clientX; lastLY = t.clientY;
+      yaw -= dx * touchLookSpeed;
+      pitch -= dy * touchLookSpeed;
+      const limit = Math.PI / 2 - 0.01;
+      pitch = Math.max(-limit, Math.min(limit, pitch));
+      controls.getObject().rotation.y = yaw;
+      camera.rotation.x = pitch;
+      suppressClickUntil = Date.now() + 250; // ドラッグ直後の誤タップ抑止
+      e.preventDefault();
+    }, { passive: false });
+    renderer.domElement.addEventListener('touchend', () => {
+      lookTouchId = null;
+    }, { passive: true });
 
     function updateMovement() {
-      // ロック中のみ移動許可（視点回転と合わせるため）
-      if (!controls.isLocked) return;
+      // デスクトップはロック中のみ移動許可。モバイルはロック無しでもOK。
+      if (!controls.isLocked && !isTouchDevice) return;
 
       let moveForward = 0;
       let moveRight = 0;
@@ -644,8 +831,14 @@ E / ESC : 退室`;
       if (keys['KeyD'] || keys['ArrowRight']) moveRight += 1;
       if (keys['KeyA'] || keys['ArrowLeft']) moveRight -= 1;
 
+      // 左ジョイスティックからの移動（前後: -y, 右左: x）
+      moveForward += -joyVec.y;
+      moveRight += joyVec.x;
+
       if (moveForward !== 0) controls.moveForward(moveForward * moveSpeed);
       if (moveRight !== 0) controls.moveRight(moveRight * moveSpeed);
+
+      // 視点回転はモバイルの画面ドラッグで処理（ここでは何もしない）
 
       // 壁内にクランプ（15x15相当）
       const obj = controls.getObject();

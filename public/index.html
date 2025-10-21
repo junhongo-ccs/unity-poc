@@ -1,61 +1,93 @@
 <!doctype html>
 <html>
+
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:;"/>
-  <title>WS Test</title>
-  <style>body{font-family:sans-serif;padding:16px} .me{color:#333} .other{color:#666}</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:;" />
+  <title>C-S 3Dギャラリー</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 16px
+    }
+
+    .me {
+      color: #333
+    }
+
+    .other {
+      color: #666
+    }
+  </style>
+
+
+  <!-- ファビコン -->
+  <link rel="icon" type="image/x-icon" href="/favicon.ico"> <!-- public/favicon.ico に配置。32x32pxで作成すればOK -->
+  <!-- または <link rel="icon" type="image/png" href="/favicon.png"> -->
+
+  <!-- OGP -->
+  <meta property="og:title" content="3D Gallery Metaverse">
+  <meta property="og:description" content="美術学生向け作品展示・販売プラットフォーム">
+  <meta property="og:image" content="/images/og-image.png"> <!-- 推奨サイズ: 1200x630px -->
+  <meta property="og:url" content="https://your-domain.com">
+  <meta property="og:type" content="website">
+
+
+
 </head>
+
 <body>
-<noscript>
-  <meta http-equiv="refresh" content="0; url=/gallery.html" />
-  <p>Redirecting to <a href="/gallery.html">/gallery.html</a> …</p>
-</noscript>
-<script>
-// ルートに来たらギャラリーへリダイレクト
-location.replace('/gallery.html');
-</script>
-<h1 style="display:none">WS Test (Arrow keys to move)</h1>
-<pre id="log" style="display:none"></pre>
-<script>
-const log = (m)=>document.getElementById('log').textContent = m + "\n" + document.getElementById('log').textContent;
+  <noscript>
+    <meta http-equiv="refresh" content="0; url=/gallery.html" />
+    <p>Redirecting to <a href="/gallery.html">/gallery.html</a> …</p>
+  </noscript>
+  <script>
+    // ルートに来たらギャラリーへリダイレクト
+    location.replace('/gallery.html');
+  </script>
+  <h1 style="display:none">WS Test (Arrow keys to move)</h1>
+  <pre id="log" style="display:none"></pre>
+  <script>
+    const log = (m) => document.getElementById('log').textContent = m + "\n" + document.getElementById('log').textContent;
 
-const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host;
-const ws = new WebSocket(url);
+    const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host;
+    const ws = new WebSocket(url);
 
-let myId=null;
-let me = { pos:[0,0,0], rot:[0,0,0] };
-let others = {};
+    let myId = null;
+    let me = { pos: [0, 0, 0], rot: [0, 0, 0] };
+    let others = {};
 
-ws.onopen = ()=>{ log("connected"); console.log("WebSocket connected"); setInterval(()=>ws.send(JSON.stringify({type:"ping"})), 5000); };
-ws.onerror = (err)=>{ log("WS ERROR: " + err); console.error("WebSocket error:", err); };
-ws.onclose = (ev)=>{ log("WS CLOSED: " + ev.code); console.log("WebSocket closed:", ev); };
-ws.onmessage = (ev)=>{
-  const msg = JSON.parse(ev.data);
-  console.log("received:", msg);
-  if (msg.type === "full") return log("FULL: " + msg.max);
-  if (msg.type === "init") { myId = msg.id; others = msg.players || {}; log("init, myId="+myId); }
-  if (msg.type === "join") { others[msg.id] = { pos:[0,0,0], rot:[0,0,0] }; log("join " + msg.id); }
-  if (msg.type === "leave") { delete others[msg.id]; log("leave " + msg.id); }
-  if (msg.type === "state") { others[msg.id] = msg.state; }
-};
+    ws.onopen = () => { log("connected"); console.log("WebSocket connected"); setInterval(() => ws.send(JSON.stringify({ type: "ping" })), 5000); };
+    ws.onerror = (err) => { log("WS ERROR: " + err); console.error("WebSocket error:", err); };
+    ws.onclose = (ev) => { log("WS CLOSED: " + ev.code); console.log("WebSocket closed:", ev); };
+    ws.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data);
+      console.log("received:", msg);
+      if (msg.type === "full") return log("FULL: " + msg.max);
+      if (msg.type === "init") { myId = msg.id; others = msg.players || {}; log("init, myId=" + myId); }
+      if (msg.type === "join") { others[msg.id] = { pos: [0, 0, 0], rot: [0, 0, 0] }; log("join " + msg.id); }
+      if (msg.type === "leave") { delete others[msg.id]; log("leave " + msg.id); }
+      if (msg.type === "state") { others[msg.id] = msg.state; }
+    };
 
-function sendState(){ 
-  console.log("sendState called, readyState:", ws.readyState, "me:", me);
-  ws.readyState===1 && ws.send(JSON.stringify({type:"state", state:me})); 
-}
-document.addEventListener("keydown",(e)=>{
-  console.log("keydown:", e.key);
-  if(e.key==="ArrowUp") me.pos[2]-=0.1;
-  if(e.key==="ArrowDown") me.pos[2]+=0.1;
-  if(e.key==="ArrowLeft") me.pos[0]-=0.1;
-  if(e.key==="ArrowRight") me.pos[0]+=0.1;
-  sendState();
-});
+    function sendState() {
+      console.log("sendState called, readyState:", ws.readyState, "me:", me);
+      ws.readyState === 1 && ws.send(JSON.stringify({ type: "state", state: me }));
+    }
+    document.addEventListener("keydown", (e) => {
+      console.log("keydown:", e.key);
+      if (e.key === "ArrowUp") me.pos[2] -= 0.1;
+      if (e.key === "ArrowDown") me.pos[2] += 0.1;
+      if (e.key === "ArrowLeft") me.pos[0] -= 0.1;
+      if (e.key === "ArrowRight") me.pos[0] += 0.1;
+      sendState();
+    });
 
-// 旧テストログは非表示のまま（互換用に残置）
-setInterval(()=>{}, 2000);
-</script>
+    // 旧テストログは非表示のまま（互換用に残置）
+    setInterval(() => { }, 2000);
+  </script>
 </body>
+
 </html>

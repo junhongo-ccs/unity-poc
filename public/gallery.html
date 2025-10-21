@@ -283,6 +283,7 @@
   <script type="module">
     import * as THREE from 'three';
     import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'; // 追加
 
     // シーン、カメラ、レンダラーの初期化
     const scene = new THREE.Scene();
@@ -301,36 +302,196 @@
     const isTouchDevice = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
     // ライト
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.7);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.2); // 少し抑えめ
     scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    directionalLight.position.set(5, 10, 5);
-    directionalLight.castShadow = true;
-    // シャドウの品質と自己シャドウ抑制
-    directionalLight.shadow.mapSize.width = 2048;
-    directionalLight.shadow.mapSize.height = 2048;
-    directionalLight.shadow.bias = -0.0002;
-    directionalLight.shadow.normalBias = 0.02;
-    const sc = directionalLight.shadow.camera;
-    sc.near = 1; sc.far = 30;
-    const dsz = 10; sc.left = -dsz; sc.right = dsz; sc.top = dsz; sc.bottom = -dsz;
-    sc.updateProjectionMatrix();
-    directionalLight.target.position.set(0, 0, 0);
-    scene.add(directionalLight.target);
+    // 絵の中心座標を定義（配置とライト狙い先の両方で共用）
+    const ART_POS = {
+      back: new THREE.Vector3(0.0, 2.5, -7.4),
+      left: new THREE.Vector3(-7.4, 2.5, 0.0),
+      right: new THREE.Vector3(7.4, 2.5, 0.0),
+    };
 
-    // 床（ピンク）: メッシュ分割を増やしてシャドウの三角アーティファクトを軽減
+    // ギャラリー用の指向性ライト生成ヘルパー
+    function addGalleryLight(position, targetPos, intensity = 1.2, color = 0xffffff) {
+      const light = new THREE.DirectionalLight(color, intensity);
+      light.position.copy(position);
+      light.castShadow = true;
+      // シャドウ調整（小さめの投影域で解像度を確保）
+      light.shadow.mapSize.set(1024, 1024);
+      light.shadow.camera.near = 0.5;
+      light.shadow.camera.far = 30;
+      const s = 4; // ライト1基あたりの投影域（±s）
+      light.shadow.camera.left = -s;
+      light.shadow.camera.right = s;
+      light.shadow.camera.top = s;
+      light.shadow.camera.bottom = -s;
+      light.shadow.bias = -0.0003;
+      light.shadow.normalBias = 0.02;
+
+      // 狙い先
+      const target = new THREE.Object3D();
+      target.position.copy(targetPos);
+      scene.add(target);
+      light.target = target;
+
+      scene.add(light);
+      return { light, target };
+    }
+
+    // 3基のライトを「天井付近から各作品へ」向ける（美術展示風）
+    const galleryLights = [
+      addGalleryLight(new THREE.Vector3(0.0, 4.6, -2.5), ART_POS.back, 1.2),
+      addGalleryLight(new THREE.Vector3(-2.5, 4.6, 0.0), ART_POS.left, 1.2),
+      addGalleryLight(new THREE.Vector3(2.5, 4.6, 0.0), ART_POS.right, 1.2),
+    ];
+
+    // 3基ライトの直後あたりに追加（Hでの補助線出しを無効化＋既存ヘルパー除去）
+    function purgeLightHelpers() {
+      const toRemove = [];
+      scene.traverse(o => {
+        const isHelper =
+          o?.type === 'DirectionalLightHelper' ||
+          o?.type === 'CameraHelper' ||
+          (o?.type === 'LineSegments' && (o?.name?.includes?.('Helper')));
+        if (isHelper) toRemove.push(o);
+      });
+      toRemove.forEach(o => o.parent?.remove(o));
+    }
+    // Hキーが届かないように捕捉して止める（キャプチャ段階）
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'KeyH') { e.stopImmediatePropagation(); e.stopPropagation(); e.preventDefault(); }
+    }, true);
+    // 念のため初期化時に一度除去
+    purgeLightHelpers();
+    // 初回レンダ後にも再パージ（遅延生成対策）
+    requestAnimationFrame(purgeLightHelpers);
+    // GLTFLoader のインスタンスを作成
+    const gltfLoader = new GLTFLoader();
+
+    // GLB ロード を関数化
+    function loadPalm(posX, posZ, rotY = Math.PI / 6) {
+      gltfLoader.load('/models/palm.glb', (gltf) => {
+        const obj = gltf.scene;
+
+        // まずセンタリング
+        obj.updateMatrixWorld(true);
+        let box = new THREE.Box3().setFromObject(obj);
+        const size = new THREE.Vector3();
+        const center = new THREE.Vector3();
+        box.getSize(size);
+        box.getCenter(center);
+        obj.position.sub(center); // 原点にセンタリング
+
+        // センタリング後に再計算し、床(y=0)へ
+        obj.updateMatrixWorld(true);
+        box.setFromObject(obj);
+        obj.position.y -= box.min.y;
+
+        // スケール（例: 高さ2m）
+        const targetHeight = 2.0;
+        const s = targetHeight / size.y;
+        obj.scale.setScalar(s);
+
+        // 位置・向き
+        obj.position.add(new THREE.Vector3(posX, 0, posZ));
+        obj.rotation.y = rotY;
+
+        // シャドウ設定
+        obj.traverse((m) => {
+          if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; }
+        });
+
+        scene.add(obj);
+        console.log(`GLB loaded at (${posX}, ${posZ}):`, '/models/palm.glb');
+      }, undefined, console.error);
+    }
+
+
+
+
+    // 右側の植物
+    loadPalm(6, 6.0, Math.PI / 6);
+    // 左側の植物（説明パネルを挟んで逆側）
+    loadPalm(-6, 6.0, -Math.PI / 6); // 向きを逆に
+
+    // 床（ピンク）: 影を受けるように
     const floorGeometry = new THREE.PlaneGeometry(15, 15, 12, 12);
     const floorMaterial = new THREE.MeshStandardMaterial({
-      color: 0xFF0083, // ピンク（指定: #FF0083）
+      color: 0xFF0083,
       roughness: 0.8,
       metalness: 0.2
     });
     const floor = new THREE.Mesh(floorGeometry, floorMaterial);
     floor.rotation.x = -Math.PI / 2;
-    // 床は自己影を受け取らない（三角アーティファクト抑止）
-    floor.receiveShadow = false;
+    floor.receiveShadow = true; // ← 影を受ける
     scene.add(floor);
+
+    // GLTFLoader は既に上で import 済み
+    // まだ無ければ: const gltfLoader = new GLTFLoader();
+
+    // 汎用ローダー（scale/targetHeight/targetWidth に対応）
+    function loadGLB(path, pos = new THREE.Vector3(), rotY = 0, opts = {}) {
+      const { scale, targetHeight, targetWidth, scaleMul, castShadow = true } = opts;
+      gltfLoader.load(path, (gltf) => {
+        const obj = gltf.scene;
+
+        // センタリング → 床合わせ（一次）
+        obj.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(obj);
+        const size = new THREE.Vector3();
+        const center = new THREE.Vector3();
+        box.getSize(size);
+        box.getCenter(center);
+        obj.position.sub(center);
+        obj.updateMatrixWorld(true);
+        const grounded = new THREE.Box3().setFromObject(obj);
+        obj.position.y -= grounded.min.y;
+
+        // スケール（高さ基準が安全。必要なら幅基準にも対応）
+        if (typeof scale === 'number') {
+          obj.scale.setScalar(scale);
+        } else if (typeof targetHeight === 'number' && size.y > 0) {
+          const s = targetHeight / size.y; obj.scale.setScalar(s);
+        } else if (typeof targetWidth === 'number' && size.x > 0) {
+          const s = targetWidth / size.x; obj.scale.setScalar(s);
+        }
+
+        // 追加の相対スケール（現状比 85% など）
+        if (typeof scaleMul === 'number') {
+          obj.scale.multiplyScalar(scaleMul);
+        }
+
+        // スケール後に再度床合わせ（浮き/埋まり防止）
+        obj.updateMatrixWorld(true);
+        const box2 = new THREE.Box3().setFromObject(obj);
+        obj.position.y -= box2.min.y;
+
+        // 配置
+        obj.position.add(pos);
+        obj.rotation.y = rotY;
+
+        // 影（モデル個別に制御）
+        obj.traverse(m => {
+          if (m.isMesh) {
+            m.castShadow = !!castShadow;   // ベンチは false を指定
+            m.receiveShadow = true;
+          }
+        });
+
+        scene.add(obj);
+        console.log('Loaded:', path, 'pos', obj.position.toArray());
+      }, undefined, console.error);
+    }
+
+    // 部屋のど真ん中にベンチを配置（現状の85%に縮小。床に密着、比率維持。床へ影は落とさない）
+    loadGLB('/models/bench.glb', new THREE.Vector3(0, 0, 0), 0, {
+      targetHeight: 0.85,   // 既存の想定高さ
+      scaleMul: 0.85,       // そこからさらに85%（= 現状の85%）
+      castShadow: false     // ベンチの影は落とさない
+    });
+
+
 
     // 天井（黄色）
     const ceilingGeometry = new THREE.PlaneGeometry(15, 15);
@@ -504,14 +665,14 @@
       rightMeta.title = rightMeta.title || nameFrom(rightImg) || '作品';
 
       // 奥の壁（中央）
-      const backArt = createArtwork(backImg, new THREE.Vector3(0, 2.5, -7.4), 1.5);
+      const backArt = createArtwork(backImg, ART_POS.back, 1.5);
       backArt.userData.url = backMeta.url;
       backArt.userData.title = backMeta.title;
       backArt.userData.desc = backMeta.desc;
       console.log('奥の壁 画像:', backImg, 'URL:', backArt.userData.url, 'TITLE:', backArt.userData.title);
 
       // 左の壁（中央）
-      const leftArt = createArtwork(leftImg, new THREE.Vector3(-7.4, 2.5, 0), 1.5);
+      const leftArt = createArtwork(leftImg, ART_POS.left, 1.5);
       leftArt.rotation.y = Math.PI / 2;
       leftArt.userData.url = leftMeta.url;
       leftArt.userData.title = leftMeta.title;
@@ -519,7 +680,7 @@
       console.log('左の壁 画像:', leftImg, 'URL:', leftArt.userData.url, 'TITLE:', leftArt.userData.title);
 
       // 右の壁（中央）
-      const rightArt = createArtwork(rightImg, new THREE.Vector3(7.4, 2.5, 0), 1.5);
+      const rightArt = createArtwork(rightImg, ART_POS.right, 1.5);
       rightArt.rotation.y = -Math.PI / 2;
       rightArt.userData.url = rightMeta.url;
       rightArt.userData.title = rightMeta.title;
